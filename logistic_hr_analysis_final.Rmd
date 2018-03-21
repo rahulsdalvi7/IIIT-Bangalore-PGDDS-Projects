@@ -1,0 +1,382 @@
+---
+title: "logistic_hr_analysis"
+author : "rahul_dalvi"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r }
+# Load packages for analysis and this section will have all the required libraries mentioned for better clarity
+library('ggplot2') # visualization
+library('car') # visualization
+library('scales') # visualization
+library('dplyr') # data manipulation
+# library('mice') # imputation
+# library('randomForest') # classification algorithm
+# library('rpart') # for decision tree
+# library('tidyr')
+# library('ROCR')
+# library('randomForest')
+# library('corrr')
+# library('corrplot')
+# library('glue')
+# library('caTools')
+# library('data.table')
+# require("GGally")
+# require("geosphere")
+# require("gmapsdistance")
+require("tidyr")
+library('corrplot')
+#source("distance.R")
+library('car')
+library('caret')
+library('purrr')
+library('coefplot')
+library('psych')
+library('MASS')
+library('leaflet.extras')
+library("PerformanceAnalytics")
+library('GPArotation')
+library('MVN')
+library('psych')
+library('MASS')
+library('psy')
+library('corpcor')
+library('fastmatch')
+library('plyr')
+library('car')
+library("PerformanceAnalytics")
+library('ggcorrplot')
+library('cluster')
+library('caTools')
+# library('InformationValue')
+library('rpart.plot')
+library('ggplot2')
+library('RColorBrewer')
+# library('data.table')
+# library('ROCR')
+# library('maptree')
+# library('tree')
+library('dummies') # for converting categorical into dummy one
+library('caret')
+library('pscl') ## for  McFadden R2
+# library('randomForest')
+library('StatMeasures')
+library('sqldf')
+library('purrr')
+library('tidyr')
+library('caret')
+library('ggplot2')
+library('gains')
+library('lubridate')
+library('dummies')
+library('glmnet')
+
+```
+
+### Data Unserstanding
+Following are the data files we have and have summarized below understanding
+
+Data File Name: intime
+Obsaervations: Each of the column name is the date and then for each column we have the in-time which is a date tome column. Here our primary key is the student id
+
+Data File Name: employee_survery_data
+Observation: Here our primary key is student id. We have employee satisfaction data here
+
+Data File Name: Outtime
+Obsaervations: Each of the column name is the date and then for each column we have the out-time which is a date time column. Here our primary key is the student id
+
+Data File Name: general_data
+Obsaervations: Here our primary key is student Id and against id, we have all the values
+
+### Data Loading into Dataframe
+
+
+```{r }
+employee_intime <-  read.csv('in_time.csv', stringsAsFactors = FALSE)
+employee_outtime <- read.csv('out_time.csv')
+employee_survey <-  read.csv('employee_survey_data.csv')
+employee_general <- read.csv('general_data.csv')
+manager_survery <- read.csv('manager_survey_data.csv')
+  
+ # summary(employee_intime)
+ # summary(employee_outtime)
+summary(employee_survey)
+summary(employee_general)
+
+  
+```
+
+### Data Transformation
+
+First step of our data transformation will be to streamline in-time and out-time. As part of our data transformation, we will merge merge employee_general and employee_survey by employee id. 
+
+Our next step of data transformation is to merge the in-time and out-time based on student id. But here the catch is that the date is the column heading.. So we will calculate the daily time as long they stayed in office and then weekly average hours they sent in office. We have initially converted excluded the Employee Id columns and have converted all other columns into date. Next we need to find out how we calculate daily hours spent in office.
+
+
+```{r}
+nrow(employee_general)
+consolidated_employee <- merge(employee_general,employee_survey, by='EmployeeID')
+consolidated_employee <- merge(consolidated_employee,manager_survery, by='EmployeeID')
+
+
+nrow(consolidated_employee)
+
+ncol(employee_intime)
+
+employee_intime[, 2:261] <- sapply(employee_intime[, 2:261], strptime, format = "%Y-%m-%d %H:%M:%S")
+employee_outtime[, 2:261] <- sapply(employee_outtime[, 2:261], strptime, format = "%Y-%m-%d %H:%M:%S")
+employee_atttendance_details <- employee_outtime[, 2:261] -  employee_intime[, 2:261]
+
+# as.numeric(employee_atttendance_details[, 1:260], units="hours")
+employee_atttendance_details[, 1:260] <- sapply(employee_atttendance_details[, 1:260] , as.numeric, units = "hours")
+ncol(employee_atttendance_details)
+
+employee_atttendance_details$office_duration=rowMeans(employee_atttendance_details[,1:260], na.rm=TRUE)
+employee_atttendance_sumamry <- as.data.frame(cbind(employee_intime$X, employee_atttendance_details$office_duration))
+
+```
+### Further Data enreachment
+
+Our next step will be to merge employee_atttendance_details and employee_general. We only need to take office_duration from attendance data as of now.
+
+```{r}
+names(employee_atttendance_sumamry)[names(employee_atttendance_sumamry) == 'V1'] <- 'EmployeeID'
+names(employee_atttendance_sumamry)[names(employee_atttendance_sumamry) == 'V2'] <- 'OfficeAvgduration'
+consolidated_employee <- merge(consolidated_employee,employee_atttendance_sumamry, by='EmployeeID')
+
+## now drop 
+```
+### Data Visualisation for variables
+
+Density plot will help us to understand the data distribution pattern
+```{r}
+consolidated_employee_backup <- consolidated_employee  ## taking a backup here
+
+consolidated_employee %>%
+  keep(is.numeric) %>%                     # Keep only numeric columns
+  gather() %>%                             # Convert to key-value pairs
+  ggplot(aes(value)) +                     # Plot the values
+    facet_wrap(~ key, scales = "free") +   # In separate panels
+    geom_density()                         # as density
+
+
+### Doing the histogram here
+
+consolidated_employee %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram()
+## Doing the boxplot here
+dk <- c(1,14)
+boxplot(subset(consolidated_employee, select = -dk), las = 2)
+
+p<-ggplot(consolidated_employee, aes(subset(consolidated_employee, select = -dk),color=Gender, fill=Department)) + geom_boxplot()
+
+```
+
+### Data Consolidation for model
+
+Now we have the consolidated data and lets do basic plotting to understanding their relationship. Our result column is Attrition. 
+Dummy variable conversion rules...
+# Attrition: Our priority is to prevent attrition and hene we will set Attrition as 1 and No Attrition as 0. Key observation here is that data is biassed towards "No Attrition"
+We will use the dummies package for converting into dummy variable. Some of the variables which are having level encoding is being corrected below so that dummy variables can be developped later, Otherwise model will assume than as numeric value.
+
+```{r}
+str(consolidated_employee)
+
+##Attrition
+consolidated_employee$Attrition <- ifelse(consolidated_employee$Attrition == "Yes",1,0)
+table(consolidated_employee$Attrition)
+
+##Job satisfaction transformation
+consolidated_employee$JobSatisfaction[consolidated_employee$JobSatisfaction==1] <- 'Low'
+consolidated_employee$JobSatisfaction[consolidated_employee$JobSatisfaction==2] <- 'Medium'
+consolidated_employee$JobSatisfaction[consolidated_employee$JobSatisfaction==3] <- 'High'
+consolidated_employee$JobSatisfaction[consolidated_employee$JobSatisfaction==4] <- 'VeryHigh'
+
+
+
+##Performance Rating transformation
+consolidated_employee$PerformanceRating[consolidated_employee$PerformanceRating==1] <- 'Low'
+consolidated_employee$PerformanceRating[consolidated_employee$PerformanceRating==2] <- 'Good'
+consolidated_employee$PerformanceRating[consolidated_employee$PerformanceRating==3] <- 'Excellent'
+consolidated_employee$PerformanceRating[consolidated_employee$PerformanceRating==4] <- 'Outstanding'
+
+### Job Involvement transformation
+consolidated_employee$JobInvolvement[consolidated_employee$JobInvolvement==1] <- 'Low'
+consolidated_employee$JobInvolvement[consolidated_employee$JobInvolvement==2] <- 'Medium'
+consolidated_employee$JobInvolvement[consolidated_employee$JobInvolvement==3] <- 'High'
+consolidated_employee$JobInvolvement[consolidated_employee$JobInvolvement==4] <- 'VeryHigh'
+
+### Education transformation
+consolidated_employee$Education[consolidated_employee$Education==1] <- 'BelowCollege'
+consolidated_employee$Education[consolidated_employee$Education==2] <- 'College'
+consolidated_employee$Education[consolidated_employee$Education==3] <- 'Bachelor'
+consolidated_employee$Education[consolidated_employee$Education==4] <- 'Master'
+consolidated_employee$Education[consolidated_employee$Education==5] <- 'Doctor'
+
+### worklife balance transformation
+consolidated_employee$WorkLifeBalance[consolidated_employee$WorkLifeBalance==1] <- 'Bad'
+consolidated_employee$WorkLifeBalance[consolidated_employee$WorkLifeBalance==2] <- 'Good'
+consolidated_employee$WorkLifeBalance[consolidated_employee$WorkLifeBalance==3] <- 'Better'
+consolidated_employee$WorkLifeBalance[consolidated_employee$WorkLifeBalance==4] <- 'Best'
+
+
+
+consolidated_employee <- dummy.data.frame(consolidated_employee[,-1], sep = ".")
+str(consolidated_employee)
+summary(consolidated_employee)
+
+```
+### Splitting the data into Test and Training Mode
+We will be doing the splitting here and then build the regression model
+
+```{r}
+set.seed(34251)
+
+pd_logit<-sample(2,nrow(consolidated_employee),replace=TRUE, prob=c(0.7,0.3))
+
+consolidated_employee_regression_train<-consolidated_employee[pd_logit==1,]
+consolidated_employee_regression_val<-consolidated_employee[pd_logit==2,]
+
+nrow(consolidated_employee_regression_train)
+nrow(consolidated_employee_regression_val)
+
+
+reg_modelstudent <- glm(consolidated_employee_regression_train$Attrition ~.,family=binomial(link='logit'),data=consolidated_employee_regression_train)
+summary(reg_modelstudent)
+
+```
+### stepwise Logistic model
+stepAIC method will be used to finetune the model further
+```{r}
+
+stepAIC(reg_modelstudent, direction='both', steps = 1000, trace=TRUE)
+```
+### Final Regression Model
+
+Here we have taken the model which has lowest AIC value and generated the model object. Coefficients are plotted.
+
+```{r}
+set.seed(3421)
+reg_modelstudent_step <- glm(formula = consolidated_employee_regression_train$Attrition ~ 
+    Age + `BusinessTravel.Non-Travel` + BusinessTravel.Travel_Frequently + 
+        `Department.Human Resources` + Education.Doctor + `EducationField.Human Resources` + 
+        `JobRole.Laboratory Technician` + `JobRole.Manufacturing Director` + 
+        `JobRole.Research Director` + `JobRole.Research Scientist` + 
+        `JobRole.Sales Executive` + MaritalStatus.Divorced + 
+        MaritalStatus.Married + NumCompaniesWorked + PercentSalaryHike + 
+        TotalWorkingYears + TrainingTimesLastYear + YearsSinceLastPromotion + 
+        YearsWithCurrManager + EnvironmentSatisfaction + JobSatisfaction.Low + 
+        JobSatisfaction.VeryHigh + WorkLifeBalance.Bad + WorkLifeBalance.Best + 
+        WorkLifeBalance.Good + JobInvolvement.High + JobInvolvement.Low + 
+        OfficeAvgduration, family = binomial(link = "logit"), 
+    data = consolidated_employee_regression_train, na.action = na.exclude)
+
+coefficients(reg_modelstudent_step)
+
+summary(reg_modelstudent_step)
+coefplot.glm(reg_modelstudent_step,parm = -1,  predictors="color")
+
+
+```
+### Test multicollinearity in the model . As seen below, all X variables in the model have VIF well below 4.
+
+```{r}
+vif(reg_modelstudent_step)
+
+```
+
+
+### Prediction on test data
+Note that thevalidtaion dataframe has some rows with null values and they need to be removed and then used for prediction
+
+```{r}
+
+row.has.na <- apply(consolidated_employee_regression_val, 1, function(x){any(is.na(x))})
+sum(row.has.na)
+
+consolidated_employee_regression_val_filtered <- consolidated_employee_regression_val[!row.has.na,]
+
+consolidated_employee_regression_val_filtered$AttritionProb <- predict(reg_modelstudent_step, newdata=consolidated_employee_regression_val_filtered, type="response")
+
+
+# consolidated_employee_regression_val$AttritionProb <- predict(reg_modelstudent_step, newdata=consolidated_employee_regression_val, type="response",na.action = na.exclude)
+
+consolidated_employee_regression_val_filtered$AttritionPredicted <- ifelse(consolidated_employee_regression_val_filtered$AttritionProb  > 0.5,1,0)  ### assigning the probability to value
+
+EmployeeAttrition <- table(actualclass=consolidated_employee_regression_val_filtered$Attrition, predictedclass=consolidated_employee_regression_val_filtered$AttritionPredicted)
+confusionMatrix(EmployeeAttrition)
+
+
+```
+
+### Testing the Accuracy of the model
+```{r}
+EmployeeAttritionMatrix <- confusionMatrix(EmployeeAttrition)
+print(EmployeeAttritionMatrix)
+
+```
+### Regularisation of Logistic Model
+Some of the coefficients are still high and that reduces the risk of model being iverfitting. We will use lasso regression regularisation model here for fine-tuning the coefficients. Important point to note is that we'll use the function cv.glmnet, which automatically performs a grid search to find the optimal value of lambda.
+
+The glmnet function model.matrix creates the matrix and also converts categorical predictors to appropriate dummy variables.
+
+The plot shows that the log of the optimal value of lambda (i.e. the one that minimises the root mean square error) is approximately -6. The exact value can be viewed by examining the variable lambda_min in the code below. In general though, the objective of regularisation is to balance accuracy and simplicity.
+
+The output coef shows that only those variables that we had determined to be significant on the basis of p-values have non-zero coefficients.The coefficients of all other variables have been set to zero by the algorithm! Lasso has reduced the complexity of the fitting function massively
+
+```{r}
+
+row.has.na_trn <- apply(consolidated_employee_regression_train, 1, function(x){any(is.na(x))})
+sum(row.has.na_trn)
+consolidated_employee_regression_train_filtered <- consolidated_employee_regression_train[!row.has.na_trn,]
+
+#convert training data to matrix format
+xInput <- model.matrix(consolidated_employee_regression_train_filtered$Attrition~.,consolidated_employee_regression_train_filtered)
+yResponse <- consolidated_employee_regression_train_filtered$Attrition
+
+#perform grid search to find optimal value of lambda #family= binomial => logistic regression, alpha=1 => lasso 
+
+Employeecv.out <- cv.glmnet(xInput,yResponse, alpha=1, family="binomial", type.measure = "class")
+#plot result
+plot(Employeecv.out)
+
+#min value of lambda
+lambda_min <- Employeecv.out$lambda.min
+#best value of lambda
+lambda_1se <- Employeecv.out$lambda.1se
+lambda_1se
+#regression coefficients
+coef(Employeecv.out,s=lambda_1se)
+
+```
+
+### Validating the test data prediction after regularisation
+Let's see by running the model against our test data:
+
+```{r}
+#get test data
+x_test <- model.matrix(consolidated_employee_regression_val$Attrition~.,consolidated_employee_regression_val)
+#predict class, type="class"
+lasso_prob <- predict(Employeecv.out, newx = x_test, s=lambda_1se,type="response")
+
+consolidated_employee_regression_val_filtered$AttritionPredictedLasso <- ifelse(lasso_prob  > 0.5,1,0)  ### assigning the probability to value. Note here that we have taken the data frame where null values being removed because o\p-valuye is not there for null values,
+
+EmployeeAttritionLasso <- table(actualclass=consolidated_employee_regression_val_filtered$Attrition, predictedclass=consolidated_employee_regression_val_filtered$AttritionPredictedLasso)
+
+confusionMatrix(EmployeeAttritionLasso)
+
+```
+
