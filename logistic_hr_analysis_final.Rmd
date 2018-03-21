@@ -1,6 +1,6 @@
 ---
 title: "logistic_hr_analysis"
-author : "rahul_dalvi"
+author :  "rahul_dalvi"
 ---
 
 ```{r setup, include=FALSE}
