@@ -1,5 +1,5 @@
 ---
-title: "logistic_hr_analysis"
+title: "HR Attrition Analysis Project"
 author :  "rahul_dalvi"
 ---
 
